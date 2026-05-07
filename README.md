@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/MoAshour93/vLLM_Studio/main/vllm_studio_cover_image.png" alt="VLLM Studio" width="600">
+</p>
+
 > A fast, Linux-native AI inference interface built on vLLM.
 
 **VLLM Studio** is a production-grade local AI chat and inference management application purpose-built for the [vLLM](https://github.com/vllm-project/vllm) inference engine on Linux with NVIDIA CUDA GPUs. Think of it as LM Studio, but engineered specifically for the vLLM ecosystem — delivering PagedAttention memory efficiency, continuous batching throughput, and a polished desktop-like chat experience.
