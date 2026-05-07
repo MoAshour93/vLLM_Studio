@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/MoAshour93/vLLM_Studio/main/vllm_studio_cover_image.png" alt="VLLM Studio" width="600">
+  <img src="https://raw.githubusercontent.com/MoAshour93/vLLM_Studio/main/vllm_studio_cover_image.png" alt="VLLM Studio" width="1024">
 </p>
 
 > A fast, Linux-native AI inference interface built on vLLM.
