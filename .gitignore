@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+backend/dist/
+frontend/dist/
+
+# Python virtual environment
+venv/
+
+# Environment files (contains local paths/secrets)
+.env
+
+# Data directory (database, attachments, downloaded models, logs, exports)
+data/
+
+# IDE / editor
+.claude/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# PID files
+*.pid
+
+# Personal / work-in-progress
+Coding Sessions/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# TypeScript build info
+*.tsbuildinfo

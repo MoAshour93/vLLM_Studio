@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VLLM Studio — Architecture Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0A0A0F;
+    --surface: #111118;
+    --surface-2: #161622;
+    --border: #1E1E2E;
+    --accent: #5B8CFF;
+    --accent-hover: #7BA4FF;
+    --accent-muted: rgba(91,140,255,0.12);
+    --success: #3DD68C;
+    --warning: #F5A623;
+    --error: #FF5370;
+    --text: #E8E8F0;
+    --text-secondary: #A0A0B8;
+    --text-muted: #6B6B80;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 9999; pointer-events: none; opacity: 0.02;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+  header {
+    padding: 80px 0 60px;
+    text-align: center;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    display: inline-flex; align-items: center; gap: 12px;
+    margin-bottom: 24px;
+  }
+  .logo svg { width: 48px; height: 48px; }
+  .logo-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 42px;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 50%, #A78BFA 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .subtitle {
+    font-size: 18px;
+    color: var(--text-secondary);
+    max-width: 700px;
+    margin: 0 auto 16px;
+    font-weight: 400;
+  }
+  .tagline {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .meta-row {
+    display: flex; gap: 16px; justify-content: center; margin-top: 32px; flex-wrap: wrap;
+  }
+  .meta-badge {
+    padding: 6px 16px;
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-secondary);
+    background: var(--surface);
+  }
+  section {
+    padding: 60px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section:last-of-type { border-bottom: none; }
+  h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+  h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .section-desc {
+    color: var(--text-secondary);
+    font-size: 15px;
+    margin-bottom: 32px;
+    max-width: 700px;
+  }
+
+  /* Architecture Diagram */
+  .arch-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    margin: 32px 0;
+  }
+  .arch-layer {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 32px;
+    margin: 8px 0;
+    border-radius: 12px;
+    position: relative;
+  }
+  .arch-layer-top { background: var(--accent-muted); border: 1px solid rgba(91,140,255,0.2); }
+  .arch-layer-mid { background: var(--surface-2); border: 1px solid var(--border); }
+  .arch-layer-bot { background: var(--surface-2); border: 1px solid var(--border); }
+  .arch-layer-gpu { background: linear-gradient(135deg, rgba(61,214,140,0.08), rgba(91,140,255,0.08)); border: 1px solid rgba(61,214,140,0.2); }
+  .arch-layer-title {
+    font-family: 'Syne', sans-serif; font-weight: 600; font-size: 15px;
+    margin-bottom: 8px;
+  }
+  .arch-layer-desc {
+    font-size: 13px; color: var(--text-secondary); text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .arch-arrow {
+    display: flex; justify-content: center; padding: 12px 0; color: var(--text-muted);
+    font-size: 24px;
+  }
+
+  /* Feature Grid */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    margin: 32px 0;
+  }
+  .feature-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .feature-card:hover {
+    border-color: rgba(91,140,255,0.3);
+    transform: translateY(-2px);
+  }
+  .feature-icon {
+    width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    background: var(--accent-muted); border-radius: 10px; margin-bottom: 16px;
+    color: var(--accent); font-size: 20px;
+  }
+  .feature-card h4 {
+    font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 600; margin-bottom: 6px;
+  }
+  .feature-card p {
+    font-size: 13px; color: var(--text-secondary); line-height: 1.5;
+  }
+
+  /* Stack list */
+  .stack-section {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  }
+  .stack-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .stack-card h3 {
+    font-family: 'Syne', sans-serif; font-size: 18px; margin-bottom: 12px;
+  }
+  .stack-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    font-size: 14px; color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .stack-item:last-child { border-bottom: none; }
+  .stack-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dot-blue { background: var(--accent); }
+  .dot-green { background: var(--success); }
+  .dot-yellow { background: var(--warning); }
+  .dot-purple { background: #A78BFA; }
+
+  /* API Section */
+  .code-block {
+    background: #0d0d16;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin: 16px 0;
+    overflow-x: auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    position: relative;
+  }
+  .code-block .keyword { color: #C084FC; }
+  .code-block .string { color: var(--success); }
+  .code-block .comment { color: var(--text-muted); font-style: italic; }
+  .code-block .function { color: var(--accent); }
+  .code-block .number { color: var(--warning); }
+
+  /* Comparison table */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 32px 0;
+    font-size: 14px;
+  }
+  .compare-table th {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--border);
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .compare-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .compare-table tr:first-child td {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .check { color: var(--success); font-weight: 600; }
+  .cross { color: var(--error); }
+
+  /* Footer */
+  footer {
+    padding: 40px 0;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* Scroll animation */
+  .fade-up {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .fade-up.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 768px) {
+    header { padding: 48px 0 32px; }
+    .logo-text { font-size: 28px; }
+    .stack-section { grid-template-columns: 1fr; }
+    .feature-grid { grid-template-columns: 1fr; }
+    section { padding: 40px 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>
+      <span class="logo-text">VLLM Studio</span>
+    </div>
+    <p class="subtitle">
+      A production-grade local AI chat and inference management application purpose-built for vLLM on Linux with NVIDIA CUDA GPUs.
+    </p>
+    <p class="tagline">Precision Tooling for Open-Source AI Inference</p>
+    <div class="meta-row">
+      <span class="meta-badge">vLLM</span>
+      <span class="meta-badge">Linux (CUDA)</span>
+      <span class="meta-badge">React + TypeScript</span>
+      <span class="meta-badge">Express + SQLite</span>
+      <span class="meta-badge">OpenAI-Compatible API</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="container">
+    <h2>Why VLLM Studio?</h2>
+    <p class="section-desc">
+      Existing local AI chat tools are built around llama.cpp or HuggingFace Transformers. vLLM delivers 10x+ higher serving throughput via PagedAttention and continuous batching, but lacks a polished desktop management interface. VLLM Studio fills that gap.
+    </p>
+
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>VLLM Studio</th>
+          <th>LM Studio</th>
+          <th>Ollama</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Inference Engine</td>
+          <td class="check">vLLM (PagedAttention)</td>
+          <td>llama.cpp (GGUF)</td>
+          <td>llama.cpp (GGUF)</td>
+        </tr>
+        <tr>
+          <td>Throughput</td>
+          <td class="check">10x+ over HF</td>
+          <td>Standard</td>
+          <td>Standard</td>
+        </tr>
+        <tr>
+          <td>Vision Models</td>
+          <td class="check">Full GPT-4V-style</td>
+          <td class="cross">Partial</td>
+          <td class="cross">Limited</td>
+        </tr>
+        <tr>
+          <td>Multi-GPU (TP)</td>
+          <td class="check">Full tensor parallelism</td>
+          <td class="cross">No</td>
+          <td class="cross">No</td>
+        </tr>
+        <tr>
+          <td>Quantization</td>
+          <td class="check">AWQ, GPTQ, FP8</td>
+          <td>GGUF only</td>
+          <td>GGUF only</td>
+        </tr>
+        <tr>
+          <td>GPU Memory Efficiency</td>
+          <td class="check">Near-zero KV waste</td>
+          <td>Standard KV cache</td>
+          <td>Standard KV cache</td>
+        </tr>
+        <tr>
+          <td>OpenAI API Compatible</td>
+          <td class="check">Native (vLLM)</td>
+          <td class="cross">No</td>
+          <td class="check">Limited</td>
+        </tr>
+        <tr>
+          <td>Streaming UI</td>
+          <td class="check">Token-by-token</td>
+          <td class="check">Yes</td>
+          <td class="check">Yes</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>System Architecture</h2>
+    <p class="section-desc">
+      VLLM Studio runs as a three-tier local stack: browser-based React SPA, Node.js management backend, and the vLLM Python inference server spawned as a managed subprocess.
+    </p>
+
+    <div class="arch-diagram">
+      <div class="arch-layer arch-layer-top">
+        <div class="arch-layer-title">React SPA (Browser)</div>
+        <div class="arch-layer-desc">
+          Three-panel layout: Sidebar (sessions/folders) · Chat Window (streaming, markdown, attachments) · Config Panel (model select, parameters, server management)
+        </div>
+      </div>
+      <div class="arch-arrow">↕ REST + WebSocket</div>
+      <div class="arch-layer arch-layer-mid">
+        <div class="arch-layer-title">Express Backend (Node.js + TypeScript)</div>
+        <div class="arch-layer-desc">
+          Routes: /api/models · /api/chat · /api/server · /api/sessions · /api/settings<br>
+          Services: vllmManager (spawn/kill/monitor) · modelScanner (HuggingFace detection) · database (SQLite via better-sqlite3)
+        </div>
+      </div>
+      <div class="arch-arrow">↕ Subprocess (spawn)</div>
+      <div class="arch-layer arch-layer-mid">
+        <div class="arch-layer-title">vLLM Inference Server (Python)</div>
+        <div class="arch-layer-desc">
+          PagedAttention KV Cache · Continuous Batching · OpenAI-compatible /v1 endpoint · AWQ/GPTQ/FP8 quantization
+        </div>
+      </div>
+      <div class="arch-arrow">↕ CUDA Driver</div>
+      <div class="arch-layer arch-layer-gpu">
+        <div class="arch-layer-title">NVIDIA GPU(s)</div>
+        <div class="arch-layer-desc">
+          VRAM · Tensor Cores · NVLink (multi-GPU) · nvidia-smi monitoring every 3s
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Technology Stack</h2>
+    <p class="section-desc">Every component built with modern, type-safe tools for reliability and developer experience.</p>
+
+    <div class="stack-section">
+      <div class="stack-card">
+        <h3>Frontend</h3>
+        <div class="stack-item"><span class="stack-dot dot-blue"></span> React 18 + TypeScript (strict)</div>
+        <div class="stack-item"><span class="stack-dot dot-blue"></span> Vite (bundler + dev server)</div>
+        <div class="stack-item"><span class="stack-dot dot-blue"></span> Zustand (global state)</div>
+        <div class="stack-item"><span class="stack-dot dot-blue"></span> React-Virtuoso (virtualized lists)</div>
+        <div class="stack-item"><span class="stack-dot dot-blue"></span> React-Markdown + Remark-GFM</div>
+        <div class="stack-item"><span class="stack-dot dot-blue"></span> Highlight.js (code syntax)</div>
+        <div class="stack-item"><span class="stack-dot dot-purple"></span> IBM Plex Mono · DM Sans · Syne</div>
+      </div>
+      <div class="stack-card">
+        <h3>Backend</h3>
+        <div class="stack-item"><span class="stack-dot dot-green"></span> Node.js + Express (TypeScript)</div>
+        <div class="stack-item"><span class="stack-dot dot-green"></span> WebSocket (ws) — logs, GPU, status</div>
+        <div class="stack-item"><span class="stack-dot dot-green"></span> SQLite via better-sqlite3 (WAL mode)</div>
+        <div class="stack-item"><span class="stack-dot dot-green"></span> Zod (input validation)</div>
+        <div class="stack-item"><span class="stack-dot dot-green"></span> Multer (file uploads)</div>
+        <div class="stack-item"><span class="stack-dot dot-green"></span> PDF-Parse (server-side text extraction)</div>
+      </div>
+      <div class="stack-card">
+        <h3>Inference</h3>
+        <div class="stack-item"><span class="stack-dot dot-yellow"></span> vLLM Engine (Python)</div>
+        <div class="stack-item"><span class="stack-dot dot-yellow"></span> PagedAttention Memory Mgmt</div>
+        <div class="stack-item"><span class="stack-dot dot-yellow"></span> Continuous Batching</div>
+        <div class="stack-item"><span class="stack-dot dot-yellow"></span> AWQ / GPTQ / FP8 Quantization</div>
+        <div class="stack-item"><span class="stack-dot dot-yellow"></span> Tensor Parallelism (1-8 GPUs)</div>
+        <div class="stack-item"><span class="stack-dot dot-yellow"></span> OpenAI-compatible /v1 API</div>
+      </div>
+      <div class="stack-card">
+        <h3>Infrastructure</h3>
+        <div class="stack-item"><span class="stack-dot" style="background:#3DD68C"></span> Single run.sh launcher (all-in-one)</div>
+        <div class="stack-item"><span class="stack-dot" style="background:#3DD68C"></span> Isolated Python venv for vLLM</div>
+        <div class="stack-item"><span class="stack-dot" style="background:#3DD68C"></span> NVIDIA CUDA Toolkit 12.x</div>
+        <div class="stack-item"><span class="stack-dot" style="background:#3DD68C"></span> nvidia-smi GPU monitoring</div>
+        <div class="stack-item"><span class="stack-dot" style="background:#3DD68C"></span> PID file-based crash recovery</div>
+        <div class="stack-item"><span class="stack-dot" style="background:#3DD68C"></span> Auto-retry on crash (3x)</div>
+        <div class="stack-item"><span class="stack-dot" style="background:#3DD68C"></span> Exponential backoff WebSocket</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Feature Highlights</h2>
+    <div class="feature-grid">
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#9889;</div>
+        <h4>One-Click vLLM Management</h4>
+        <p>Start, stop, and restart the vLLM inference server directly from the UI. Configure GPU memory utilization, quantization, tensor parallelism, and all vLLM CLI flags. Live GPU stats via nvidia-smi polling.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#128172;</div>
+        <h4>Streaming Chat with Markdown</h4>
+        <p>Token-by-token streaming output with blinking cursor. Full markdown rendering: tables, syntax-highlighted code blocks with copy buttons, math, and rich formatting. Auto-scroll to bottom.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#128190;</div>
+        <h4>Model Discovery &amp; Metadata</h4>
+        <p>Automatically scan directories for HuggingFace-format models (safetensors) and GGUF files. Detects architecture, quantization (AWQ/GPTQ/FP8/GGUF), context length (RoPE scaling), vision support, and model size. Cached for instant retrieval.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#128206;</div>
+        <h4>Image &amp; PDF Attachments</h4>
+        <p>Attach images (JPG, PNG, WebP, GIF) for vision-capable models via base64 image_url. Attach PDFs with automatic server-side text extraction. Enforced size limits and format validation.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#128269;</div>
+        <h4>Chat Organization</h4>
+        <p>Folders with colour coding, session pinning, fuzzy search across titles and content, inline rename, drag-and-drop between folders, and bulk export/import as JSON.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#127758;</div>
+        <h4>OpenAI-Compatible API</h4>
+        <p>Any application using the OpenAI SDK can point to VLLM Studio's API endpoint. Full /v1/chat/completions support including streaming, parameters, and stop sequences. Copy base URL with one click.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#129302;</div>
+        <h4>HuggingFace Hub Browser</h4>
+        <p>Search the HuggingFace Hub for models directly within VLLM Studio. Browse quantized GGUF variants, download models with progress tracking, and filter by vLLM compatibility.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#128200;</div>
+        <h4>VRAM Estimation Engine</h4>
+        <p>Pre-flight resource planning tool that estimates weights, KV cache, activations, and overhead memory usage. Provides fit verdicts (full-gpu, partial-gpu, cpu-offload) and recommended context lengths.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#129520;</div>
+        <h4>GGUF Architecture Support</h4>
+        <p>Pure TypeScript GGUF v3 binary metadata parser. One-click architecture patching for community models with non-standard labels. Auto-detects context length, embedding size, and block configuration from binary headers.</p>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">&#128214;</div>
+        <h4>Release Notes &amp; About</h4>
+        <p>Comprehensive release notes with search, section navigation, and roadmap. Full about page with author bio, tech stack, AI collaborator credits, and links to the vLLM documentation at docs.vllm.ai.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>OpenAI-Compatible API</h2>
+    <p class="section-desc">
+      Once a model is loaded, VLLM Studio exposes an OpenAI-compatible chat completions endpoint. Any OpenAPI SDK-compatible application can use it directly.
+    </p>
+
+    <div class="code-block">
+      <span class="comment"># Python example using the openai package</span><br>
+      <span class="keyword">from</span> openai <span class="keyword">import</span> OpenAI<br><br>
+      client = OpenAI(<br>
+      &nbsp;&nbsp;base_url=<span class="string">"http://localhost:8000/v1"</span>,<br>
+      &nbsp;&nbsp;api_key=<span class="string">"not-needed"</span><br>
+      )<br><br>
+      response = client.chat.completions.create(<br>
+      &nbsp;&nbsp;model=<span class="string">"your-model"</span>,<br>
+      &nbsp;&nbsp;messages=[{<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"Hello!"</span>}],<br>
+      &nbsp;&nbsp;temperature=<span class="number">0.7</span>,<br>
+      &nbsp;&nbsp;max_tokens=<span class="number">512</span><br>
+      )<br><br>
+      <span class="function">print</span>(response.choices[<span class="number">0</span>].message.content)
+    </div>
+
+    <div class="code-block">
+      <span class="comment"># curl example</span><br>
+      curl http://localhost:8000/v1/chat/completions \<br>
+      &nbsp;&nbsp;-H <span class="string">"Content-Type: application/json"</span> \<br>
+      &nbsp;&nbsp;-d <span class="string">'{<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"model": "your-model",<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"messages": [{"role": "user", "content": "Hello!"}],<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"temperature": 0.7,<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"max_tokens": 512,<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;"stream": true<br>
+      &nbsp;&nbsp;}'</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Data Flow</h2>
+    <p class="section-desc">
+      Every interaction flows through a clear pipeline from the browser to the GPU and back. WebSocket maintains a persistent connection for real-time server monitoring.
+    </p>
+
+    <div class="arch-diagram" style="padding: 24px;">
+      <div style="display: grid; grid-template-columns: 80px 1fr 80px 1fr 80px; gap: 12px; align-items: center; font-size: 13px;">
+        <div style="text-align: center; padding: 12px; background: var(--accent-muted); border-radius: 8px; border: 1px solid rgba(91,140,255,0.2);">
+          User Input
+        </div>
+        <div style="text-align: center; color: var(--text-muted); font-size: 20px;">→</div>
+        <div style="text-align: center; padding: 12px; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--border);">
+          Express<br>Backend<br><span style="font-size: 11px; color: var(--text-muted);">Rate limit · Validate · Log</span>
+        </div>
+        <div style="text-align: center; color: var(--text-muted); font-size: 20px;">→</div>
+        <div style="text-align: center; padding: 12px; background: var(--surface-2); border-radius: 8px; border: 1px solid var(--border);">
+          vLLM<br>Inference<br><span style="font-size: 11px; color: var(--text-muted);">PagedAttention · Batch</span>
+        </div>
+      </div>
+
+      <div style="text-align: center; padding: 8px; color: var(--text-muted); font-size: 20px;">↕</div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+        <div style="padding: 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; text-align: center;">
+          <strong style="color: var(--accent);">REST API</strong> (stateless)<br>
+          <span style="font-size: 12px; color: var(--text-muted);">Sessions · Messages · Settings · Models</span>
+        </div>
+        <div style="padding: 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; text-align: center;">
+          <strong style="color: var(--success);">WebSocket</strong> (persistent)<br>
+          <span style="font-size: 12px; color: var(--text-muted);">vLLM logs · GPU stats · Server status</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Security &amp; Reliability</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>Local-Only Binding</h4>
+        <p>Backend and vLLM server bind to 127.0.0.1 by default. External access requires explicit user opt-in via settings.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Path Sanitization</h4>
+        <p>All model paths are validated against user-configured directories. Directory traversal attacks are blocked.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Input Validation</h4>
+        <p>Zod schemas validate every API request body. Type-safe on both frontend (API client) and backend.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Graceful Error Handling</h4>
+        <p>CUDA OOM errors are caught from vLLM stderr and surfaced as actionable user-facing messages. Auto-retry on crash (max 3x).</p>
+      </div>
+      <div class="feature-card">
+        <h4>Crash Recovery</h4>
+        <p>PID file-based re-attachment on backend restart. vLLM subprocess is detected and re-monitored if still running.</p>
+      </div>
+      <div class="feature-card">
+        <h4>Database Reliability</h4>
+        <p>SQLite WAL mode for concurrent reads. Automatic migrations with version tracking. No manual schema management.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>v1.0.0 — PagedAttention</h2>
+    <p class="section-desc">
+      The initial release of VLLM Studio — codenamed PagedAttention — delivers a complete local AI inference experience purpose-built for vLLM on Linux with NVIDIA CUDA GPUs. Built with React, TypeScript, Express, SQLite, and vLLM.
+    </p>
+    <p class="section-desc" style="font-size:13px; color:var(--text-muted);">
+      <strong style="color: var(--accent);">Important:</strong> LLM model support is bound by what the vLLM engine supports.
+      For the latest list of supported model architectures and configuration options, refer to the official vLLM documentation at{' '}
+      <a href="https://docs.vllm.ai" target="_blank" style="color: var(--accent);">docs.vllm.ai</a>.
+    </p>
+    <div class="meta-row">
+      <span class="meta-badge">vLLM Subprocess Management</span>
+      <span class="meta-badge">GGUF Parser &amp; Patcher</span>
+      <span class="meta-badge">VRAM Estimator</span>
+      <span class="meta-badge">HuggingFace Browser</span>
+      <span class="meta-badge">140+ Architectures</span>
+      <span class="meta-badge">Apache 2.0</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>About the Author</h2>
+    <div style="display: flex; gap: 32px; align-items: flex-start; margin-top: 24px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-hover)); flex-shrink: 0;">
+        <span style="font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 700; color: #fff;">MA</span>
+      </div>
+      <div style="flex: 1; min-width: 280px;">
+        <h3 style="font-size: 22px; margin-bottom: 4px;">Mohamed Ashour</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+          MRICS (Chartered Quantity Surveyor) · MBCS (Chartered Data Analyst) · Civil Engineer · Digital Transformation Manager
+        </p>
+        <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.7;">
+          Mohamed is a chartered surveyor and data analyst with a decade of combined experience spanning construction engineering, digital transformation, and AI/LLM development. VLLM Studio was built out of a genuine frustration with existing local inference tools on Linux — and a desire for something faster, cleaner, and purpose-built for vLLM.
+        </p>
+        <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+          <a href="https://github.com/Moashour93/vllm-studio" target="_blank" class="meta-badge" style="text-decoration: none; cursor: pointer; color: var(--accent);">GitHub Repository</a>
+          <a href="https://www.linkedin.com/in/mohamed-ashour-0727/" target="_blank" class="meta-badge" style="text-decoration: none; cursor: pointer; color: var(--accent);">LinkedIn</a>
+          <a href="mailto:mo_ashour1@outlook.com" class="meta-badge" style="text-decoration: none; cursor: pointer; color: var(--accent);">Email</a>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top: 24px; padding: 16px 20px; background: rgba(91,140,255,0.06); border: 1px solid rgba(91,140,255,0.15); border-radius: 10px;">
+      <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
+        <strong style="color: var(--accent);">AI Collaborator:</strong> DeepSeek V4 (Pro) — primary AI pair programmer used throughout the architecture, backend, and frontend development of VLLM Studio. All design decisions, architecture choices, and final implementation were directed and reviewed by the author.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container">
+    <h2>Getting Started</h2>
+    <div class="arch-diagram" style="padding: 24px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: var(--text-secondary); line-height: 2;">
+        <span class="comment"># 1. Install system prerequisites (once)</span><br>
+        <span style="color: var(--text);">sudo apt-get install -y nodejs npm python3 python3-pip python3-venv</span><br>
+        <br>
+        <span class="comment"># 2. Clone and launch — run.sh does everything:</span><br>
+        <span class="comment">#    · Creates a Python venv/ (isolated from system)</span><br>
+        <span class="comment">#    · Installs vLLM inside the venv</span><br>
+        <span class="comment">#    · Installs all Node.js dependencies</span><br>
+        <span class="comment">#    · Builds frontend and compiles backend</span><br>
+        <span class="comment">#    · Launches the server</span><br>
+        <span style="color: var(--text);">git clone &lt;repo-url&gt; && cd vllm-studio</span><br>
+        <span style="color: var(--text);">bash run.sh</span><br>
+        <br>
+        <span class="comment"># 3. Open browser</span><br>
+        <span style="color: var(--success);">http://localhost:3333</span><br>
+        <br>
+        <span class="comment"># 4. Add model directory in Settings</span><br>
+        <span class="comment"># 5. Select a model and start the vLLM server</span><br>
+        <span class="comment"># 6. Start chatting!</span><br>
+        <br>
+        <span class="comment"># Subsequent runs — run.sh detects the existing</span><br>
+        <span class="comment"># venv and skips re-installation. Just run:</span><br>
+        <span style="color: var(--text);">bash run.sh</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p style="font-size: 15px; color: var(--accent); font-family: 'Syne', sans-serif; font-weight: 600;">VLLM Studio</p>
+    <p style="margin-top: 4px;">Precision tooling for open-source AI inference on Linux</p>
+    <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+      Built with React · TypeScript · Express · SQLite · vLLM · NVIDIA CUDA &nbsp;|&nbsp; Apache 2.0 License
+    </p>
+  </div>
+</footer>
+
+<script>
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+  document.querySelectorAll('.fade-up').forEach(el => el.classList.add('visible'));
+</script>
+
+</body>
+</html>
